@@ -14,10 +14,23 @@ NUM_ROUTES = 10
 SECOND_IN_A_DAY = 24 * 60 * 60
 
 
-NUM_VEHICLES = 10
-DAY_START_RANGE = [0, 3 * 60 * 60]
-SPEED_RANGE = [15, 25]
-IDLE_RANGE = [30 * 60, 5 * 60 * 60]
+NUM_VEHICLES = 20                       # Number of vehicles
+DAY_START_RANGE = [0, 3 * 60 * 60]      # Start delay
+SPEED_RANGE = [15, 25]                  # Vehicle Speed Range
+IDLE_RANGE = [30 * 60, 5 * 60 * 60]     # Vehicle Idle range
+FRAC_START_T0 = 0.25                    # Fraction of vehicles start at T0
+
+
+def get_idle_data(start, end):
+    d = {'timestamp': range(start, end)}
+    d['latitude'] = [None] * (end - start)
+    d['longitude'] = [None] * (end - start)
+    return pd.DataFrame.from_dict(d)
+
+
+def start_at_tzero():
+    return random.choices([True, False], weights=(
+        FRAC_START_T0, 1 - FRAC_START_T0), k=1)[0]
 
 
 def get_idle_timedelta():
@@ -119,20 +132,25 @@ if __name__ == '__main__':
     for vehicle_id in range(0, NUM_VEHICLES):
         print('Routing for vehicle: {}'.format(vehicle_id))
         vehicle_data = None
-        current_time = get_start_time()
+        current_time = 0 if start_at_tzero() else get_start_time()
+        if current_time != 0:
+            vehicle_data = get_idle_data(0, current_time)
         start_stop = None
         while current_time < SECOND_IN_A_DAY:
             start_stop = get_random_stop() if start_stop is None else start_stop
             end_stop = get_random_stop(start_stop)
-            print('Starting from {} and going to {}'.format(start_stop, end_stop))
+            v_speed = get_speed()
+            print('Starting from {} and going to {} with speed {}. Vehicle running time {}'.format(start_stop, end_stop,
+                                                                                                   v_speed, humanize.naturaldelta(dt.timedelta(seconds=current_time)) if current_time != 0 else '0 seconds'))
             df, start_ts, end_ts = get_route_data(
-                start_stop, end_stop, current_time, get_speed())
-
+                start_stop, end_stop, current_time)
             vehicle_data = df if vehicle_data is None else vehicle_data.append(
                 df)
 
             idle_time = get_idle_timedelta()
             current_time = end_ts + idle_time
+            vehicle_data = vehicle_data.append(
+                get_idle_data(end_ts + 1, current_time))
             start_stop = end_stop
             print('Waiting at stop {} for {}'.format(start_stop,
                                                      humanize.naturaldelta(dt.timedelta(seconds=idle_time))))
